@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <title>Mini Tasks — Add to Home Screen</title>
+  <style>
+    :root{
+      --bg:#0f1724; --card:#0b1220; --accent:#06b6d4; --muted:#94a3b8; --glass: rgba(255,255,255,0.03);
+      color-scheme: dark;
+    }
+    html,body{height:100%;margin:0;background:linear-gradient(180deg,#071021 0%, #081428 100%);font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;}
+    .app{max-width:720px;margin:0 auto;padding:18px;box-sizing:border-box;}
+    header{display:flex;align-items:center;gap:12px;margin-bottom:14px;}
+    h1{font-size:20px;margin:0;color:#e6eef6;}
+    .subtitle{color:var(--muted);font-size:13px;}
+    .card{background:var(--card);padding:12px;border-radius:12px;box-shadow:0 6px 24px rgba(2,6,23,0.6);}
+    .input-row{display:flex;gap:8px;margin-bottom:10px;}
+    input[type="text"]{flex:1;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,0.04);background:var(--glass);color:#e6eef6;font-size:16px;}
+    button{background:linear-gradient(90deg,var(--accent),#0ea5a5);border:none;padding:10px 12px;border-radius:10px;color:#022;min-width:64px;font-weight:600;}
+    ul{list-style:none;padding:0;margin:6px 0;}
+    li{display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px;margin-bottom:8px;background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent);}
+    .task-text{flex:1;color:#e6eef6;}
+    .muted{color:var(--muted);font-size:13px;}
+    .controls{display:flex;gap:8px;}
+    .ghost{background:transparent;border:1px solid rgba(255,255,255,0.04);padding:8px;border-radius:8px;color:var(--muted);}
+    .small{font-size:13px;padding:8px 10px;}
+    .done .task-text{text-decoration:line-through;color:#6b7280;}
+    footer{margin-top:14px;color:var(--muted);font-size:13px;text-align:center;}
+    .empty{padding:18px;border-radius:10px;background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent);color:var(--muted);}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div>
+        <h1>Mini Tasks</h1>
+        <div class="subtitle">Simple to-dos that live on your phone (offline)</div>
+      </div>
+    </header>
+
+    <div class="card" id="mainCard">
+      <div class="input-row">
+        <input id="newTask" type="text" placeholder="Add a new task..." aria-label="New task" />
+        <button id="addBtn">Add</button>
+      </div>
+
+      <div id="listWrap" aria-live="polite">
+        <ul id="tasks"></ul>
+        <div id="empty" class="empty" style="display:none;">No tasks yet — add one above.</div>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;margin-top:10px;align-items:center;">
+        <div class="muted" id="count">0 tasks</div>
+        <div class="controls">
+          <button id="clearDone" class="ghost small">Clear done</button>
+          <button id="export" class="ghost small">Export</button>
+          <button id="import" class="ghost small">Import</button>
+        </div>
+      </div>
+    </div>
+
+    <footer>Tip: open this page in <strong>Safari</strong> → Share → <strong>Add to Home Screen</strong>.</footer>
+  </div>
+
+<script>
+(() => {
+  const STORAGE_KEY = 'mini-tasks-v1';
+  const tasksEl = document.getElementById('tasks');
+  const newTaskInput = document.getElementById('newTask');
+  const addBtn = document.getElementById('addBtn');
+  const countEl = document.getElementById('count');
+  const emptyEl = document.getElementById('empty');
+  const clearDoneBtn = document.getElementById('clearDone');
+  const exportBtn = document.getElementById('export');
+  const importBtn = document.getElementById('import');
+
+  let tasks = [];
+
+  function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks)); updateUI(); }
+
+  function load(){
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY);
+      tasks = raw ? JSON.parse(raw) : [];
+    }catch(e){ tasks = []; }
+  }
+
+  function addTask(text){
+    if(!text || !text.trim()) return;
+    tasks.unshift({id:Date.now(),text:text.trim(),done:false});
+    save();
+  }
+
+  function toggleDone(id){
+    tasks = tasks.map(t => t.id === id ? {...t, done: !t.done} : t);
+    save();
+  }
+
+  function removeTask(id){
+    tasks = tasks.filter(t => t.id !== id);
+    save();
+  }
+
+  function clearDone(){
+    tasks = tasks.filter(t => !t.done);
+    save();
+  }
+
+  function exportTasks(){
+    const data = JSON.stringify(tasks, null, 2);
+    const blob = new Blob([data], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'mini-tasks.json'; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function importTasks(){
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'application/json';
+    inp.onchange = e => {
+      const f = e.target.files[0];
+      if(!f) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try{
+          const parsed = JSON.parse(reader.result);
+          if(Array.isArray(parsed)){
+            tasks = parsed.slice(0,1000); save();
+            alert('Imported ' + tasks.length + ' tasks.');
+          }else alert('File didn\\'t contain a task array.');
+        }catch(er){ alert('Problem reading file: ' + er.message); }
+      };
+      reader.readAsText(f);
+    };
+    inp.click();
+  }
+
+  function editTask(id){
+    const t = tasks.find(x => x.id === id);
+    const newText = prompt('Edit task', t.text);
+    if(newText === null) return;
+    t.text = newText.trim();
+    save();
+  }
+
+  function render(){
+    tasksEl.innerHTML = '';
+    if(tasks.length === 0){ emptyEl.style.display = 'block'; } else { emptyEl.style.display = 'none'; }
+    tasks.forEach(t => {
+      const li = document.createElement('li');
+      if(t.done) li.classList.add('done');
+      const chk = document.createElement('input'); chk.type = 'checkbox'; chk.checked = !!t.done;
+      chk.onchange = () => toggleDone(t.id);
+      const span = document.createElement('div'); span.className = 'task-text'; span.textContent = t.text;
+      span.ondblclick = () => editTask(t.id);
+      const controls = document.createElement('div'); controls.className = 'controls';
+      const del = document.createElement('button'); del.className='ghost small'; del.textContent='Delete'; del.onclick = () => { if(confirm('Delete this task?')) removeTask(t.id); };
+      const edit = document.createElement('button'); edit.className='ghost small'; edit.textContent='Edit'; edit.onclick = () => editTask(t.id);
+      controls.appendChild(edit); controls.appendChild(del);
+      li.appendChild(chk); li.appendChild(span); li.appendChild(controls);
+      tasksEl.appendChild(li);
+    });
+    countEl.textContent = tasks.length + (tasks.length === 1 ? ' task' : ' tasks');
+  }
+
+  function updateUI(){ render(); try{ localStorage.setItem(STORAGE_KEY + '-lastSaved', new Date().toISOString()); }catch(e){} }
+
+  // Events
+  addBtn.addEventListener('click', ()=>{ addTask(newTaskInput.value); newTaskInput.value=''; newTaskInput.focus(); });
+  newTaskInput.addEventListener('keydown', (e)=>{ if(e.key === 'Enter'){ addTask(newTaskInput.value); newTaskInput.value=''; } });
+  clearDoneBtn.addEventListener('click', ()=>{ if(confirm('Remove all completed tasks?')) clearDone(); });
+  exportBtn.addEventListener('click', exportTasks);
+  importBtn.addEventListener('click', importTasks);
+
+  // Init
+  load(); updateUI();
+
+  // register service worker (optional; works when served from HTTPS)
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.register('sw.js').catch(()=>{/* silent */});
+  }
+
+  // accessibility: focus input on load
+  window.addEventListener('load', ()=> newTaskInput.focus());
+})();
+</script>
+</body>
+</html>
